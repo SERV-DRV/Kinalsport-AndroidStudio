@@ -5,21 +5,36 @@ using Microsoft.Extensions.Configuration;
 
 namespace AuthService.Application.Services;
 
-public class CloudinaryService(IConfiguration configuration) : ICloudinaryService
+public class CloudinaryService : ICloudinaryService
 {
-    private readonly Cloudinary _cloudinary = new(new Account(
-        configuration["CloudinarySettings:CloudName"],
-        configuration["CloudinarySettings:ApiKey"],
-        configuration["CloudinarySettings:ApiSecret"]
-    ));
+    private readonly Cloudinary? _cloudinary;
+    private readonly IConfiguration _configuration;
+
+    public CloudinaryService(IConfiguration configuration)
+    {
+        _configuration = configuration;
+        var cloudName = configuration["CloudinarySettings:CloudName"];
+        var apiKey = configuration["CloudinarySettings:ApiKey"];
+        var apiSecret = configuration["CloudinarySettings:ApiSecret"];
+
+        // Solo inicializar Cloudinary si tiene credenciales configuradas
+        if (!string.IsNullOrWhiteSpace(cloudName) && !string.IsNullOrWhiteSpace(apiKey) && !string.IsNullOrWhiteSpace(apiSecret))
+        {
+            _cloudinary = new Cloudinary(new Account(cloudName, apiKey, apiSecret));
+        }
+    }
 
     public async Task<string> UploadImageAsync(IFileData imageFile, string fileName)
     {
         try
         {
+            // Si Cloudinary no está configurado, retornar avatar por defecto
+            if (_cloudinary == null)
+                return GetDefaultAvatarUrl();
+
             using var stream = new MemoryStream(imageFile.Data);
 
-            var folder = configuration["CloudinarySettings:Folder"]
+            var folder = _configuration["CloudinarySettings:Folder"]
                          ?? "auth_service/profiles";
 
             var cleanName = Path.GetFileNameWithoutExtension(fileName);
@@ -49,7 +64,11 @@ public class CloudinaryService(IConfiguration configuration) : ICloudinaryServic
     {
         try
         {
-            var folder = configuration["CloudinarySettings:Folder"]
+            // Si Cloudinary no está configurado, no hacer nada
+            if (_cloudinary == null)
+                return false;
+
+            var folder = _configuration["CloudinarySettings:Folder"]
                          ?? "auth_service/profiles";
 
             var withoutVersion = fileName.Contains('/')
@@ -79,8 +98,8 @@ public class CloudinaryService(IConfiguration configuration) : ICloudinaryServic
 
     public string GetDefaultAvatarUrl()
     {
-        var baseUrl = configuration["CloudinarySettings:BaseUrl"] ?? "https://res.cloudinary.com/dug3apxt3/image/upload/";
-        var defaultPath = configuration["CloudinarySettings:DefaultAvatarPath"] ?? "auth_service/profiles/avatarDefault-1749508519496_oam3k3";
+        var baseUrl = _configuration["CloudinarySettings:BaseUrl"] ?? "https://res.cloudinary.com/dug3apxt3/image/upload/";
+        var defaultPath = _configuration["CloudinarySettings:DefaultAvatarPath"] ?? "auth_service/profiles/avatarDefault-1749508519496_oam3k3";
         // Asegurar que tenga extensión .png
         if (!defaultPath.EndsWith(".png"))
             defaultPath += ".png";
@@ -89,14 +108,14 @@ public class CloudinaryService(IConfiguration configuration) : ICloudinaryServic
 
     public string GetFullImageUrl(string fileName)
     {
-        var baseUrl = configuration["CloudinarySettings:BaseUrl"]
+        var baseUrl = _configuration["CloudinarySettings:BaseUrl"]
                       ?? "https://res.cloudinary.com/dqx1m6nxh/image/upload/";
 
         if (string.IsNullOrWhiteSpace(fileName))
         {
             // Avatar por defecto: usar versión y sin carpeta duplicada
             var version = "v1774318088";
-            var defaultFile = configuration["CloudinarySettings:DefaultAvatarPath"] ?? "avatarDefault-1749508519496_oam3k3";
+            var defaultFile = _configuration["CloudinarySettings:DefaultAvatarPath"] ?? "avatarDefault-1749508519496_oam3k3";
             if (!defaultFile.EndsWith(".png"))
                 defaultFile += ".png";
             // Solo el filename, sin carpeta
